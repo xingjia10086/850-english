@@ -1,0 +1,6 @@
+{
+  "name": "Basic 850",
+  "description": "A gamified English learning app based on Ogden's 850 Basic English words. Perfect for mastering daily English communication with levels, quiz models, and an AI chat partner.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
