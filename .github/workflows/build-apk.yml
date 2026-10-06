@@ -1,0 +1,52 @@
+name: Build APK
+
+on:
+  push:
+    branches: ["claude/**"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      # The repo has no Gradle wrapper; AGP 9 needs Gradle 9.x
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: current
+
+      - name: Accept SDK licenses and install platform
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0" || true
+
+      - name: Prepare debug keystore and env
+        run: |
+          base64 -d debug.keystore.base64 > debug.keystore
+          # Optional: add a GEMINI_API_KEY repository secret to enable the AI pages in this build
+          echo "GEMINI_API_KEY=${GEMINI_API_KEY:-MY_GEMINI_API_KEY}" > .env
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+
+      - name: Build debug APK
+        run: gradle :app:assembleDebug --stacktrace
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+
+      - name: Unit tests
+        run: gradle :app:testDebugUnitTest --stacktrace
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: unit-test-reports
+          path: app/build/reports/tests/
