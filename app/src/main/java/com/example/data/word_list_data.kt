@@ -621,8 +621,8 @@ object WordListData {
             category = "Picturable Nouns",
             translation = "眼睛",
             ipa = "/aɪ/",
-            exampleSentence = "She has blue eyes.",
-            exampleTranslation = "她有一双蓝色的眼睛。",
+            exampleSentence = "She has a blue eye.",
+            exampleTranslation = "她有一只蓝色的眼睛。",
             levelIndex = 7
         ),
         Word(
@@ -631,7 +631,7 @@ object WordListData {
             category = "Picturable Nouns",
             translation = "耳朵",
             ipa = "/ɪə/",
-            exampleSentence = "Keep your ears warm in snow.",
+            exampleSentence = "Keep your ear warm in snow.",
             exampleTranslation = "在雪天里让耳朵保持暖和。",
             levelIndex = 7
         ),
@@ -671,7 +671,7 @@ object WordListData {
             category = "Picturable Nouns",
             translation = "手",
             ipa = "/hænd/",
-            exampleSentence = "Wash your hands with water.",
+            exampleSentence = "Wash your hand with water.",
             exampleTranslation = "用水洗手。",
             levelIndex = 7
         ),
@@ -1253,8 +1253,8 @@ object WordListData {
             category = "Picturable Nouns",
             translation = "明星 / 星星",
             ipa = "/stɑː/",
-            exampleSentence = "See the stars in the dark sky.",
-            exampleTranslation = "看黑夜天空中闪亮的小星星。",
+            exampleSentence = "See the star in the dark sky.",
+            exampleTranslation = "看黑夜天空中那颗闪亮的星星。",
             levelIndex = 13
         ),
         Word(
@@ -1467,8 +1467,8 @@ object WordListData {
             category = "Picturable Nouns",
             translation = "鞋子",
             ipa = "/ʃuː/",
-            exampleSentence = "Are your shoes clean or dirty?",
-            exampleTranslation = "你的鞋子是干净的还是脏的？",
+            exampleSentence = "Is your shoe clean or dirty?",
+            exampleTranslation = "你的鞋是干净的还是脏的？",
             levelIndex = 15
         ),
         Word(
