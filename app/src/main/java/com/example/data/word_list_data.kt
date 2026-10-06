@@ -1,7 +1,7 @@
 package com.example.data
 
 object WordListData {
-    val initialWords = listOf(
+    private val coreWords = listOf(
         // Level 1: Operations (Verbs - Action)
         Word(
             id = 1,
@@ -169,7 +169,7 @@ object WordListData {
             id = 17,
             word = "may",
             category = "Operations",
-            translation = "也许 / 可以",
+            translation = "也许 / 可以；May = 五月",
             ipa = "/meɪ/",
             exampleSentence = "You may go now.",
             exampleTranslation = "你现在可以走了。",
@@ -1532,4 +1532,20 @@ object WordListData {
             levelIndex = 15
         )
     )
+
+    /** All 850 words: 150 hand-written core words followed by the compact-format ones. */
+    val initialWords: List<Word> by lazy { coreWords + ExtraWordData.words }
+
+    const val TOTAL_LEVELS = 85
+
+    private val coreLevelTitles = mapOf(
+        1 to "动作动词", 2 to "助词与方向", 3 to "方位介词", 4 to "连词与介词", 5 to "关联代词",
+        6 to "家庭与房屋", 7 to "人体感官", 8 to "美食与饮品", 9 to "常用状态", 10 to "色彩与情绪",
+        11 to "时空领域", 12 to "学校与工作", 13 to "自然与天气", 14 to "抽象特征", 15 to "穿戴与物属"
+    )
+
+    fun levelTitle(level: Int): String =
+        coreLevelTitles[level]
+            ?: ExtraWordData.levels.firstOrNull { it.index == level }?.titleZh
+            ?: "第 $level 关"
 }

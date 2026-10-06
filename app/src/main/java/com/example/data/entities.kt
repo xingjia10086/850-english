@@ -1,5 +1,6 @@
 package com.example.data
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 
@@ -14,7 +15,12 @@ data class Word(
     val exampleTranslation: String,
     val masteryState: Int = 0, // 0 = Not started, 1 = Studying, 2 = Mastered
     val bookmarked: Boolean = false,
-    val levelIndex: Int
+    val levelIndex: Int,
+    // Spaced-repetition state (Leitner boxes, see SrsScheduler)
+    @ColumnInfo(defaultValue = "0") val reviewStage: Int = 0,
+    @ColumnInfo(defaultValue = "0") val nextReviewTime: Long = 0L,
+    @ColumnInfo(defaultValue = "0") val correctCount: Int = 0,
+    @ColumnInfo(defaultValue = "0") val wrongCount: Int = 0
 )
 
 @Entity(tableName = "user_stats")

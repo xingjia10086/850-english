@@ -6,6 +6,8 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.RoomDatabase
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -27,6 +29,21 @@ interface WordDao {
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertAll(words: List<Word>)
+
+    @Query("SELECT * FROM words WHERE id = :id")
+    suspend fun getWordById(id: Int): Word?
+
+    @Query("SELECT COUNT(*) FROM words WHERE (correctCount + wrongCount) > 0 AND nextReviewTime <= :now")
+    fun countDueWords(now: Long): Flow<Int>
+
+    @Query("SELECT * FROM words WHERE (correctCount + wrongCount) > 0 AND nextReviewTime <= :now ORDER BY nextReviewTime ASC LIMIT :limit")
+    suspend fun getDueWordsSync(now: Long, limit: Int): List<Word>
+
+    @Query(
+        "UPDATE words SET reviewStage = :stage, nextReviewTime = :next, masteryState = :mastery, " +
+            "correctCount = :correct, wrongCount = :wrong WHERE id = :id"
+    )
+    suspend fun updateReview(id: Int, stage: Int, next: Long, mastery: Int, correct: Int, wrong: Int)
 
     @Query("UPDATE words SET masteryState = :state WHERE id = :id")
     suspend fun updateWordMastery(id: Int, state: Int)
@@ -59,9 +76,21 @@ interface ChatMessageDao {
     suspend fun clearAllMessages()
 }
 
-@Database(entities = [Word::class, UserStats::class, ChatMessage::class], version = 1, exportSchema = false)
+@Database(entities = [Word::class, UserStats::class, ChatMessage::class], version = 2, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun wordDao(): WordDao
     abstract fun userStatsDao(): UserStatsDao
     abstract fun chatMessageDao(): ChatMessageDao
+}
+
+/** v1 -> v2: spaced-repetition columns. Words the old logic called "mastered" become due for a first review. */
+val MIGRATION_1_2 = object : Migration(1, 2) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE words ADD COLUMN reviewStage INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE words ADD COLUMN nextReviewTime INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE words ADD COLUMN correctCount INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE words ADD COLUMN wrongCount INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("UPDATE words SET reviewStage = 1, correctCount = 1 WHERE masteryState = 2")
+        db.execSQL("UPDATE words SET masteryState = 1 WHERE masteryState = 2")
+    }
 }

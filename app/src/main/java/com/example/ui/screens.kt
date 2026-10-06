@@ -1,6 +1,14 @@
 package com.example.ui
 
+import android.app.Activity
+import android.content.ActivityNotFoundException
+import android.content.Intent
+import android.speech.RecognizerIntent
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -39,6 +47,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.ChatMessage
 import com.example.data.Word
+import com.example.data.WordListData
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -188,25 +197,90 @@ fun PathScreen(viewModel: MainViewModel) {
             }
         }
 
-        Text(
-            text = "Ogden 850 Basic English Pathway (基础 850 词路径)",
-            fontSize = 15.sp,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
-            textAlign = TextAlign.Center
-        )
+        // Overall progress and today's review
+        val dueCount by viewModel.dueWordCount.collectAsStateWithLifecycle()
+        val totalWords = WordListData.initialWords.size
+        val masteredCount = allWords.count { it.masteryState == 2 }
+        val studiedCount = allWords.count { it.masteryState >= 1 }
+
+        Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "850 常用词学习路径",
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Text(
+                    text = "已掌握 $masteredCount / $totalWords · 学过 $studiedCount",
+                    fontSize = 11.sp,
+                    color = Color.Gray,
+                    modifier = Modifier.testTag("mastery_progress_text")
+                )
+            }
+            Spacer(modifier = Modifier.height(6.dp))
+            LinearProgressIndicator(
+                progress = { if (totalWords == 0) 0f else masteredCount.toFloat() / totalWords },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(8.dp)
+                    .clip(RoundedCornerShape(4.dp)),
+                color = Color(0xFF4CAF50),
+                trackColor = Color.LightGray
+            )
+        }
+
+        if (dueCount > 0) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("今日复习", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                        Text(
+                            "有 $dueCount 个单词该复习了，趁热打铁别忘记！",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer
+                        )
+                    }
+                    Button(
+                        onClick = { viewModel.startReview() },
+                        modifier = Modifier.testTag("start_review_button")
+                    ) {
+                        Text("开始复习", fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
 
         // Path Map Scroller
+        val listState = rememberLazyListState()
+        LaunchedEffect(activeLevelIndex) {
+            // Jump to the current level when the path opens
+            listState.scrollToItem((activeLevelIndex - 1).coerceIn(0, WordListData.TOTAL_LEVELS - 1))
+        }
         LazyColumn(
+            state = listState,
             modifier = Modifier
                 .fillMaxSize()
                 .weight(1f),
             contentPadding = PaddingValues(bottom = 32.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Level path nodes (1 to 15)
-            val levels = (1..15).toList()
+            val levels = (1..WordListData.TOTAL_LEVELS).toList()
             itemsIndexed(levels) { index, levelNum ->
                 val isUnlocked = levelNum <= activeLevelIndex
                 val isCompleted = levelNum <= completedLevelCount
@@ -271,23 +345,7 @@ fun PathScreen(viewModel: MainViewModel) {
                     Spacer(modifier = Modifier.height(6.dp))
 
                     // Small text explaining category below
-                    val categoryTag = when (levelNum) {
-                        1 -> "动作动词"
-                        2 -> "助词与方向"
-                        3 -> "方位介词"
-                        4 -> "连词与介词"
-                        5 -> "关联代词"
-                        6 -> "家庭与房屋"
-                        7 -> "人体感官"
-                        8 -> "美食与饮品"
-                        9 -> "常用状态"
-                        10 -> "色彩与情绪"
-                        11 -> "时空领域"
-                        12 -> "学校与工作"
-                        13 -> "自然与天气"
-                        14 -> "抽象特征"
-                        else -> "穿戴与物属"
-                    }
+                    val categoryTag = WordListData.levelTitle(levelNum)
 
                     Text(
                         text = "Level $levelNum • $categoryTag",
@@ -299,7 +357,7 @@ fun PathScreen(viewModel: MainViewModel) {
                 }
 
                 // Small connector line
-                if (levelNum < 15) {
+                if (levelNum < WordListData.TOTAL_LEVELS) {
                     val lineXOffset = when (index % 3) {
                         0 -> (-15).dp
                         1 -> 15.dp
@@ -341,7 +399,7 @@ fun PathScreen(viewModel: MainViewModel) {
                         color = MaterialTheme.colorScheme.primary
                     )
                     Text(
-                        text = "本关将学习10个核心基础词汇：",
+                        text = "本关将学习${levelWords.size}个核心基础词汇（点喇叭听发音）：",
                         fontSize = 12.sp,
                         color = Color.Gray,
                         modifier = Modifier.padding(bottom = 12.dp)
@@ -352,7 +410,7 @@ fun PathScreen(viewModel: MainViewModel) {
                     // Scrollable list of level's words
                     LazyColumn(
                         modifier = Modifier
-                            .height(240.dp)
+                            .height(300.dp)
                             .fillMaxWidth()
                             .padding(vertical = 8.dp)
                     ) {
@@ -376,12 +434,21 @@ fun PathScreen(viewModel: MainViewModel) {
                                         color = Color.DarkGray
                                     )
                                 }
-                                Text(
-                                    text = word.translation,
-                                    fontSize = 13.sp,
-                                    color = MaterialTheme.colorScheme.secondary,
-                                    fontWeight = FontWeight.Bold
-                                )
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = word.translation,
+                                        fontSize = 13.sp,
+                                        color = MaterialTheme.colorScheme.secondary,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    IconButton(onClick = { viewModel.speak(word.exampleSentence) }) {
+                                        Icon(
+                                            Icons.Default.VolumeUp,
+                                            contentDescription = "Listen",
+                                            tint = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -714,6 +781,48 @@ fun QuizActiveScreen(state: QuizState.Active, viewModel: MainViewModel) {
                         )
                     }
                 }
+                QuestionType.DICTATION -> {
+                    // Listen, then type what was heard
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Button(
+                            onClick = { viewModel.speak(q.targetWord.word) },
+                            shape = CircleShape,
+                            modifier = Modifier
+                                .size(110.dp)
+                                .testTag("dictation_audio_button"),
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+                        ) {
+                            Icon(Icons.Default.VolumeUp, contentDescription = "Play Audio", modifier = Modifier.size(54.dp))
+                        }
+                        Text(
+                            text = "点击再听一遍，然后写下单词",
+                            fontSize = 11.sp,
+                            color = Color.Gray,
+                            modifier = Modifier.padding(top = 10.dp)
+                        )
+                        Spacer(modifier = Modifier.height(24.dp))
+
+                        val keyboardController = LocalSoftwareKeyboardController.current
+
+                        OutlinedTextField(
+                            value = state.currentTypedAnswer,
+                            onValueChange = { viewModel.updateTypedAnswer(it) },
+                            textStyle = LocalTextStyle.current.copy(textAlign = TextAlign.Center, fontWeight = FontWeight.Bold, fontSize = 24.sp),
+                            modifier = Modifier
+                                .fillMaxWidth(0.8f)
+                                .testTag("spelling_input"),
+                            placeholder = { Text("输入你听到的单词...", modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center, fontSize = 16.sp) },
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                            keyboardActions = KeyboardActions(onDone = {
+                                keyboardController?.hide()
+                                viewModel.checkAnswer()
+                            }),
+                            singleLine = true,
+                            enabled = !state.answered
+                        )
+                    }
+                }
+                QuestionType.SPEAKING -> SpeakingPanel(state, viewModel)
             }
         }
 
@@ -782,6 +891,7 @@ fun QuizActiveScreen(state: QuizState.Active, viewModel: MainViewModel) {
             onClick = {
                 if (!state.answered) viewModel.checkAnswer() else viewModel.nextQuestion()
             },
+            enabled = state.answered || q.type != QuestionType.SPEAKING,
             modifier = Modifier
                 .fillMaxWidth()
                 .height(56.dp)
@@ -799,6 +909,89 @@ fun QuizActiveScreen(state: QuizState.Active, viewModel: MainViewModel) {
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Bold
             )
+        }
+    }
+}
+
+/** Read-aloud question: listen to the sentence, then say it into the system speech recognizer. */
+@Composable
+fun SpeakingPanel(state: QuizState.Active, viewModel: MainViewModel) {
+    val q = state.currentQuestion
+    val context = LocalContext.current
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val texts = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS).orEmpty()
+            if (texts.isNotEmpty()) viewModel.submitSpeech(texts)
+        }
+    }
+
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(
+            text = q.targetWord.exampleSentence,
+            fontSize = 24.sp,
+            fontWeight = FontWeight.ExtraBold,
+            color = MaterialTheme.colorScheme.secondary,
+            textAlign = TextAlign.Center,
+            modifier = Modifier
+                .padding(horizontal = 16.dp)
+                .testTag("speaking_sentence")
+        )
+        Text(
+            text = q.targetWord.exampleTranslation,
+            fontSize = 13.sp,
+            color = Color.Gray,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(top = 6.dp)
+        )
+        TextButton(onClick = { viewModel.speak(q.targetWord.exampleSentence) }) {
+            Icon(Icons.Default.VolumeUp, contentDescription = null, modifier = Modifier.size(20.dp))
+            Spacer(modifier = Modifier.width(6.dp))
+            Text("先听一遍标准发音")
+        }
+        Spacer(modifier = Modifier.height(16.dp))
+        Button(
+            onClick = {
+                val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                    putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                    putExtra(RecognizerIntent.EXTRA_LANGUAGE, "en-US")
+                    putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
+                    putExtra(RecognizerIntent.EXTRA_PROMPT, q.targetWord.exampleSentence)
+                }
+                try {
+                    launcher.launch(intent)
+                } catch (e: ActivityNotFoundException) {
+                    Toast.makeText(context, "这台设备不支持语音识别，可以先跳过这题", Toast.LENGTH_SHORT).show()
+                }
+            },
+            enabled = !state.answered,
+            shape = CircleShape,
+            modifier = Modifier
+                .size(96.dp)
+                .testTag("speaking_mic_button")
+        ) {
+            Icon(Icons.Default.Mic, contentDescription = "Speak", modifier = Modifier.size(48.dp))
+        }
+        Text(
+            text = "点击麦克风，大声读出这句话",
+            fontSize = 11.sp,
+            color = Color.Gray,
+            modifier = Modifier.padding(top = 8.dp)
+        )
+        if (state.heardText.isNotBlank()) {
+            Text(
+                text = "识别到：${state.heardText}",
+                fontSize = 13.sp,
+                color = Color.DarkGray,
+                modifier = Modifier.padding(top = 8.dp)
+            )
+        }
+        if (!state.answered) {
+            TextButton(
+                onClick = { viewModel.skipSpeaking() },
+                modifier = Modifier.testTag("speaking_skip_button")
+            ) {
+                Text("现在不方便说话，跳过", fontSize = 12.sp)
+            }
         }
     }
 }
@@ -881,7 +1074,7 @@ fun QuizCompletedScreen(state: QuizState.Completed, viewModel: MainViewModel) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        val passed = state.score.toFloat() / state.maxScore.toFloat() >= 0.7f
+        val passed = state.isReview || state.score.toFloat() / state.maxScore.toFloat() >= 0.7f
 
         Icon(
             imageVector = if (passed) Icons.Default.CheckCircle else Icons.Default.Error,
@@ -895,7 +1088,11 @@ fun QuizCompletedScreen(state: QuizState.Completed, viewModel: MainViewModel) {
         Spacer(modifier = Modifier.height(16.dp))
 
         Text(
-            text = if (passed) "Lesson Completed! (学习完满结束)" else "Try Again Later (继续加油)",
+            text = when {
+                state.isReview -> "复习完成！"
+                passed -> "Lesson Completed! (学习完满结束)"
+                else -> "Try Again Later (继续加油)"
+            },
             fontSize = 24.sp,
             fontWeight = FontWeight.Bold,
             color = if (passed) Color(0xFF2E7D32) else Color(0xFFC62828),
@@ -912,6 +1109,19 @@ fun QuizCompletedScreen(state: QuizState.Completed, viewModel: MainViewModel) {
         )
 
         Spacer(modifier = Modifier.height(32.dp))
+
+        if (state.weakWords.isNotEmpty()) {
+            Text(
+                text = "这些词需要多看几遍：" + state.weakWords.joinToString("、") { "${it.word} ${it.translation}" },
+                fontSize = 13.sp,
+                color = Color.DarkGray,
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .fillMaxWidth(0.9f)
+                    .padding(bottom = 16.dp)
+                    .testTag("weak_words_text")
+            )
+        }
 
         if (passed) {
             Card(
@@ -977,15 +1187,21 @@ fun QuizCompletedScreen(state: QuizState.Completed, viewModel: MainViewModel) {
 fun WordListScreen(viewModel: MainViewModel) {
     val allWords by viewModel.allWords.collectAsStateWithLifecycle()
     var searchQuery by remember { mutableStateOf("") }
-    var selectedCategory by remember { mutableStateOf("All") }
+    var selectedCategory by remember { mutableStateOf("全部") }
     var showBookmarkedOnly by remember { mutableStateOf(false) }
 
-    val categories = listOf("All", "Operations", "General Nouns", "Picturable Nouns", "Adjectives")
+    val categories = listOf("全部", "未学", "学习中", "已掌握", "易错")
 
     val filteredWords = allWords.filter { word ->
         val matchSearch = word.word.contains(searchQuery, ignoreCase = true) ||
                 word.translation.contains(searchQuery)
-        val matchCategory = selectedCategory == "All" || word.category == selectedCategory
+        val matchCategory = when (selectedCategory) {
+            "未学" -> word.masteryState == 0
+            "学习中" -> word.masteryState == 1
+            "已掌握" -> word.masteryState == 2
+            "易错" -> word.wrongCount > 0
+            else -> true
+        }
         val matchBookmark = !showBookmarkedOnly || word.bookmarked
         matchSearch && matchCategory && matchBookmark
     }
@@ -997,13 +1213,13 @@ fun WordListScreen(viewModel: MainViewModel) {
             .padding(16.dp)
     ) {
         Text(
-            "Basic 150 Dictionary Explorer",
+            "850 词词库",
             fontSize = 20.sp,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.primary
         )
         Text(
-            "查找850基础词（精选150核心）的拼写、国际音标、释义和例句：",
+            "共 ${allWords.size} 个常用词：拼写、音标、释义和例句，点喇叭听发音：",
             fontSize = 11.sp,
             color = Color.Gray,
             modifier = Modifier.padding(bottom = 12.dp)
@@ -1356,6 +1572,31 @@ fun ChatScreen(viewModel: MainViewModel) {
         }
 
         // Suggestion Chips Quick Typing Panel
+        // Everyday situations to role-play with the tutor
+        val scenarios = listOf(
+            "自我介绍" to "introducing myself to a new friend",
+            "点餐" to "ordering food in a restaurant",
+            "问路" to "asking the way in a city",
+            "购物" to "buying clothes in a shop",
+            "看病" to "seeing a doctor",
+            "打电话" to "making a phone call to a friend",
+            "订酒店" to "checking in at a hotel"
+        )
+        LazyRow(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            items(scenarios) { (label, situation) ->
+                AssistChip(
+                    onClick = { viewModel.startScenario(situation) },
+                    label = { Text("情景：$label", fontSize = 11.sp) },
+                    modifier = Modifier.testTag("scenario_chip_$label")
+                )
+            }
+        }
+
         if (messages.isNotEmpty()) {
             val suggestions = listOf("How are you?", "Let's talk about food.", "Tell me about a good friend.")
             LazyRow(
@@ -1399,6 +1640,32 @@ fun ChatScreen(viewModel: MainViewModel) {
                 singleLine = true
             )
             Spacer(modifier = Modifier.width(8.dp))
+            if (viewModel.speechAvailable) {
+                // Speak instead of typing: the recognized sentence is put in the input box for review
+                val micContext = LocalContext.current
+                val micLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+                    if (result.resultCode == Activity.RESULT_OK) {
+                        val heard = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()
+                        if (!heard.isNullOrBlank()) typedInput = heard
+                    }
+                }
+                IconButton(
+                    onClick = {
+                        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                            putExtra(RecognizerIntent.EXTRA_LANGUAGE, "en-US")
+                        }
+                        try {
+                            micLauncher.launch(intent)
+                        } catch (e: ActivityNotFoundException) {
+                            Toast.makeText(micContext, "这台设备不支持语音识别", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    modifier = Modifier.testTag("chat_mic_button")
+                ) {
+                    Icon(Icons.Default.Mic, contentDescription = "Speak", tint = MaterialTheme.colorScheme.primary)
+                }
+            }
             IconButton(
                 onClick = {
                     if (typedInput.isNotBlank()) {

@@ -3,9 +3,14 @@ package com.example.data
 import android.content.Context
 import androidx.room.Room
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.withContext
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class AppRepository(private val context: Context) {
 
     private val db: AppDatabase by lazy {
@@ -13,7 +18,7 @@ class AppRepository(private val context: Context) {
             context.applicationContext,
             AppDatabase::class.java,
             "basic_850_english.db"
-        ).build()
+        ).addMigrations(MIGRATION_1_2).build()
     }
 
     private val wordDao = db.wordDao()
@@ -22,6 +27,13 @@ class AppRepository(private val context: Context) {
 
     val allWords: Flow<List<Word>> = wordDao.getAllWords()
     val bookmarkedWords: Flow<List<Word>> = wordDao.getBookmarkedWords()
+    /** Number of words whose review time has come; re-evaluated every minute. */
+    val dueWordCount: Flow<Int> = flow {
+        while (true) {
+            emit(System.currentTimeMillis())
+            delay(60_000)
+        }
+    }.flatMapLatest { now -> wordDao.countDueWords(now) }
     val userStats: Flow<UserStats?> = userStatsDao.getUserStatsFlow()
     val chatMessages: Flow<List<ChatMessage>> = chatMessageDao.getAllMessages()
 
@@ -42,9 +54,7 @@ class AppRepository(private val context: Context) {
             )
         }
 
-        // Check if words exist
-        val wordsCount = WordListData.initialWords.size
-        // Pre-insert words in conflict strategy IGNORE
+        // IGNORE keeps learning progress and only adds words that are new in this version
         wordDao.insertAll(WordListData.initialWords)
     }
 
@@ -54,6 +64,25 @@ class AppRepository(private val context: Context) {
 
     suspend fun getWordsByLevelSync(levelIndex: Int): List<Word> = withContext(Dispatchers.IO) {
         wordDao.getWordsByLevelSync(levelIndex)
+    }
+
+    suspend fun getDueWords(limit: Int): List<Word> = withContext(Dispatchers.IO) {
+        wordDao.getDueWordsSync(System.currentTimeMillis(), limit)
+    }
+
+    /** Records one first-attempt answer for [wordId] and reschedules its next review. */
+    suspend fun recordAnswer(wordId: Int, correct: Boolean) = withContext(Dispatchers.IO) {
+        val word = wordDao.getWordById(wordId) ?: return@withContext
+        val now = System.currentTimeMillis()
+        val stage = SrsScheduler.nextStage(word.reviewStage, correct)
+        wordDao.updateReview(
+            id = wordId,
+            stage = stage,
+            next = SrsScheduler.nextReviewTime(stage, correct, now),
+            mastery = SrsScheduler.masteryFor(stage),
+            correct = word.correctCount + if (correct) 1 else 0,
+            wrong = word.wrongCount + if (correct) 0 else 1
+        )
     }
 
     suspend fun updateWordMastery(wordId: Int, state: Int) = withContext(Dispatchers.IO) {

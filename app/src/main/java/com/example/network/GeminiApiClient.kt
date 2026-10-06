@@ -20,7 +20,8 @@ data class Part(
 
 @JsonClass(generateAdapter = true)
 data class Content(
-    val parts: List<Part>
+    val parts: List<Part>,
+    val role: String? = null
 )
 
 @JsonClass(generateAdapter = true)
@@ -46,6 +47,9 @@ data class Candidate(
 data class GenerateContentResponse(
     val candidates: List<Candidate>?
 )
+
+/** One earlier message of a conversation, sent to the model as context. */
+data class ChatTurn(val fromUser: Boolean, val text: String)
 
 interface GeminiApiService {
     @POST("v1beta/models/gemini-3.5-flash:generateContent")
@@ -83,14 +87,19 @@ object GeminiApiClient {
      */
     suspend fun getGeminiResponse(
         prompt: String,
-        systemPrompt: String? = null
+        systemPrompt: String? = null,
+        history: List<ChatTurn> = emptyList()
     ): String {
         val apiKey = BuildConfig.GEMINI_API_KEY
         if (apiKey.isBlank() || apiKey == "MY_GEMINI_API_KEY") {
             return "API_KEY_ERROR: Gemini API Key is missing. Please enter your GEMINI_API_KEY in the Secrets panel in AI Studio to enable the AI coach feature."
         }
 
-        val contents = listOf(Content(parts = listOf(Part(text = prompt))))
+        // Earlier turns give the tutor context; the conversation must start with a user turn.
+        val past = history.dropWhile { !it.fromUser }.map {
+            Content(parts = listOf(Part(text = it.text)), role = if (it.fromUser) "user" else "model")
+        }
+        val contents = past + Content(parts = listOf(Part(text = prompt)), role = "user")
         val systemInstruction = systemPrompt?.let { Content(parts = listOf(Part(text = it))) }
         val request = GenerateContentRequest(
             contents = contents,
